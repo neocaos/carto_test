@@ -68,7 +68,7 @@
         content += `<h3> ${data.name} </h3>`;
         content += `<p>Between ${data.pop_min} and ${data.pop_max} inhabitants </p>`;
         content += `</div>`;
-
+        popup.setContent(content)
         popup.setLatLng(featureEvent.latLng);
         if (!popup.isOpen()) {
           popup.openOn(map);
