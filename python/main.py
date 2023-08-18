@@ -1,85 +1,67 @@
-
+# import libraries
 import sys
-
-#https://data.cityofnewyork.us/resource/bntt-wmh5.json
 import os
-from pathlib import Path
-
-import geopandas as gpd
-import pandas
-
-import requests
-import validators
-
-from cartoframes.auth import Credentials
 from cartoframes.auth import set_default_credentials
 from cartoframes import to_carto
-from cartoframes.utils import decode_geometry
-from shapely.geometry import shape
+from datetime import datetime
+from urllib.parse import urlparse
+from geopandas import GeoDataFrame
 
-set_default_credentials('creds.json')
+from utils import (
+    get_file,
+    get_geodataframe_from_file,
+    get_geodataframe_from_geojson,
+    is_arg_file,
+    is_arg_url,
+)
+
+# we set our Credentials to carto.
+set_default_credentials("creds.json")
 
 
-def is_arg_file(file):
-    try:
-        return os.path.exists(file) and os.path.isfile(file)    
-    except Exception as e:
-        pass
-    
-
-def get_file(arg):
-    #https://www.bilbao.eus/aytoonline/srvDatasetCamaras?formato=geojson
-    data = requests.get(arg)
-    return data.json()
-    
-
-def is_arg_url(arg):
-    return validators.url(arg)
-    
-    
-
-def split_and_load(arg, is_file=True, row_limit=10):
-    if is_file and Path(arg).suffix == '.csv':
-        frame = pandas.read_csv(arg,nrows=10)
-        # geodataframe.crs = 'epsg:4326'
-        geodataframe = gpd.GeoDataFrame(frame,geometry=decode_geometry(frame['the_geom']))
-        geodataframe.crs = 'epsg:4326'
-        geodataframe = geodataframe.head(10)
-    
-    if not is_file:
-        geodataframe = gpd.GeoDataFrame.from_features(arg['features']).head(10)
-        
-        
-        
-    # partial = geodataframe.head(row_limit)
-    
-    return geodataframe
-    
-
+# Main method, which will be executed once module is called
 def main(args):
     print("Running ETL pipeline to Ingest Spatial Data")
-    print('Number of arguments:', len(args), 'arguments.')
-    for index,arg in enumerate(args):
+    print("Number of arguments:", len(args), "arguments.")
+
+    # We iterate over arguments, and we check if they're a request or a file
+    for index, arg in enumerate(args):
         print("argument: " + str(arg) + " with index :" + str(index))
-        
-        is_file = is_arg_file(arg)
-        is_url = is_arg_url(arg)
-        
-        if not is_file and not is_url:        
-            raise Exception("Argument must be a local file or a url")
-        
-        if is_file:
-            file = arg
-        else: # It's a endpoint or request
-            file = get_file(arg)
-        
-        
-        geodataframe = split_and_load(file,is_file)
-        
-        to_carto(geodataframe, 'test2', if_exists='replace')
-        
-    
+
+        now = datetime.now()
+        date_time = now.strftime("%Y%m%d%H%M")
+        dataset_name = ""
+
+        # We can set up how many rows to upload to carto by setting up an Environment Variable (row_limit)
+        row_limit = int(os.environ.get("row_limit", 10))
+        try:
+            is_file = is_arg_file(arg)
+            is_url = is_arg_url(arg)
+
+            if not is_file and not is_url:
+                raise Exception("Argument must be a local file or a url")
+
+            if is_file:
+                file = arg
+                _, dataset_name = os.path.split(file)
+                geodataframe = get_geodataframe_from_file(arg)
+            else:  # It's a endpoint or request
+                file = get_file(arg)
+                dataset_name = urlparse(arg).path.replace("/", "_").strip("_")
+                geodataframe = get_geodataframe_from_geojson(arg)
+
+            if isinstance(geodataframe, GeoDataFrame):
+                to_carto(
+                    geodataframe.head(row_limit),
+                    f"{date_time}_{dataset_name}",
+                    if_exists="replace",
+                )
+
+        except Exception as e:
+            print("Some Exception has raised in the arg: " + arg)
+            print(str(e))
 
 
+# We pass all the arguments to the method except the module itself.
 if __name__ == "__main__":
     main(sys.argv[1:])
