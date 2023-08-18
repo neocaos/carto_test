@@ -30,7 +30,7 @@ E.g.
 
 ```bash
 python main.py nysd.csv \
-    https://opendataexapmle/endpoint/fileexample.geojson```
+    https://www.bilbao.eus/aytoonline/srvDatasetCamaras?formato=geojson```
 
 
 
